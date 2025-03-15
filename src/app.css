@@ -1,0 +1,28 @@
+@import url("https://fonts.googleapis.com/css2?family=Madimi+One&family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito", sans-serif;
+  --border-width-6: 6px;
+  --color-accent: #ff0000;
+}
+
+body {
+  @apply text-stone-100 selection:bg-stone-100 selection:text-stone-900 bg-stone-900 duration-200 leading-snug tracking-wide;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-stone-800 rounded-full;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-stone-700 rounded-full duration-200;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-stone-600;
+}
