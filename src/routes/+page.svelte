@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { parseWebStream } from "music-metadata";
   import { extractColors } from "extract-colors";
   import anime from "animejs";
@@ -17,13 +17,17 @@
   let currIndex = 0;
 
   let discElement: HTMLDivElement;
-  let audioElement: HTMLAudioElement;
   let queueElement: HTMLDivElement;
 
-  const discAcceleration = 0.01;
-  const discMaxSpeed = 1;
+  const discAcceleration = 0.08;
+  const discMaxSpeed = 2;
   let discVelocity = 0;
   let discRotation = 0;
+
+  let audioCtx: AudioContext;
+  let source: AudioBufferSourceNode;
+  let gainNode: GainNode;
+  let filter: BiquadFilterNode;
 
   function tick() {
     if (!discElement) return;
@@ -38,6 +42,10 @@
 
     discRotation += discVelocity;
     discElement.style.transform = `rotate(${discRotation}deg)`;
+
+    if (source) {
+      source.playbackRate.setValueAtTime(discVelocity / discMaxSpeed, audioCtx.currentTime);
+    }
 
     requestAnimationFrame(tick);
   }
@@ -87,12 +95,33 @@
     }
   }
 
+  async function playAudio(url: string) {
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    if (source) source.stop();
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.loop = false;
+
+    gainNode = audioCtx.createGain();
+    filter = audioCtx.createBiquadFilter();
+
+    source.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    filter.frequency.setValueAtTime(22050, audioCtx.currentTime);
+    source.start();
+  }
+
   async function setSong(index: number) {
     if (queue.length == 0) return;
 
     currIndex = index % queue.length;
-    audioElement.src = queue[currIndex].src;
-    audioElement.play();
+    playAudio(queue[currIndex].src);
+    isPaused = false;
 
     const color = await extractColors(queue[currIndex].cover);
     const c = color.sort((a, b) => b.saturation - a.saturation)[0];
@@ -115,55 +144,39 @@
   }
 
   onMount(() => {
-    document.addEventListener("keydown", (event) => {
+    document.addEventListener("keypress", (event) => {
       if (event.key === " ") {
         isPaused = !isPaused;
-      }
-
-      if (event.key === "ArrowRight") {
+      } else if (event.key === "ArrowRight") {
         setSong(currIndex + 1);
-      }
-
-      if (event.key === "ArrowLeft") {
+      } else if (event.key === "ArrowLeft") {
         setSong(currIndex - 1);
       }
     });
 
-    audioElement.addEventListener("ended", () => {
-      setSong(currIndex + 1);
-    });
-
-    window.addEventListener("dragover", (e) => {
-      e.preventDefault();
-    });
-
+    window.addEventListener("dragover", e => e.preventDefault());
     window.addEventListener("drop", (e) => {
       e.preventDefault();
       onDrop(e);
     });
 
     if ("mediaSession" in navigator) {
-      // Handle media control actions
-      navigator.mediaSession.setActionHandler("play", () => {
-        isPaused = false;
-      });
-
-      navigator.mediaSession.setActionHandler("pause", () => {
-        isPaused = true;
-      });
-
-      navigator.mediaSession.setActionHandler("previoustrack", () => {
-        setSong(currIndex - 1);
-      });
-
-      navigator.mediaSession.setActionHandler("nexttrack", () => {
-        setSong(currIndex + 1);
-      });
+      navigator.mediaSession.setActionHandler("play", () => isPaused = false );
+      navigator.mediaSession.setActionHandler("pause", () => isPaused = true );
+      navigator.mediaSession.setActionHandler("previoustrack", () => setSong(currIndex - 1));
+      navigator.mediaSession.setActionHandler("nexttrack", () => setSong(currIndex + 1));
     }
+
+    audioCtx = new AudioContext();
 
     setSong(0);
 
     requestAnimationFrame(tick);
+  });
+
+  onDestroy(() => {
+    if (source) source.stop();
+    if (audioCtx) audioCtx.close();
   });
 </script>
 
@@ -207,9 +220,9 @@
   </div>
 </main>
 
-<audio
+<!-- <audio
   bind:paused={isPaused}
   class="hidden"
   bind:this={audioElement}
   volume={0.5}
-></audio>
+></audio> -->
