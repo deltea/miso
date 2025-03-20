@@ -3,6 +3,7 @@
   import { parseWebStream } from "music-metadata";
   import { extractColors } from "extract-colors";
   import { browser } from "$app/environment";
+    import { lerp, lerpAngle, radToDeg } from "$lib/utils";
 
   interface Song {
     title: string;
@@ -20,18 +21,23 @@
   let delta = 0;
   let lastTime = 0;
 
-  let discElement: HTMLDivElement;
+  let discElement: HTMLButtonElement;
   let queueElement: HTMLDivElement;
 
-  const discAcceleration = 0.75;
-  const discMaxSpeed = 60;
+  const discAcceleration = 0.03;
+  const discMaxSpeed = 1.5;
   let discVelocity = 0;
   let discRotation = 0;
+  let dragStartRotation = 0;
 
   let audioCtx: AudioContext;
   let source: AudioBufferSourceNode;
   let gainNode: GainNode;
   let filter: BiquadFilterNode;
+
+  let isDiskSpinning = true;
+  let isDiskDragging = false;
+  let mousePos = [0, 0];
 
   function tick() {
     if (!discElement) return;
@@ -39,16 +45,27 @@
     delta = (performance.now() - lastTime) / 1000;
     lastTime = performance.now();
 
-    if (isPaused) {
-      discVelocity -= discAcceleration;
-      discVelocity = Math.max(discVelocity, 0);
-    } else {
-      discVelocity += discAcceleration;
-      discVelocity = Math.min(discVelocity, discMaxSpeed);
+    if (isDiskSpinning) {
+      if (isPaused) {
+        discVelocity -= discAcceleration;
+        discVelocity = Math.max(discVelocity, 0);
+      } else {
+        discVelocity += discAcceleration;
+        discVelocity = Math.min(discVelocity, discMaxSpeed);
+      }
+    }
+
+    if (isDiskDragging) {
+      const boundingRect = discElement.getBoundingClientRect();
+      const targetRotation = Math.atan2(
+        mousePos[1] - boundingRect.y - boundingRect.height / 2,
+        mousePos[0] - boundingRect.x - boundingRect.width / 2
+      );
+      discRotation = lerpAngle(discRotation, targetRotation + dragStartRotation, 0.05);
     }
 
     discRotation += discVelocity * delta;
-    discElement.style.transform = `rotate(${discRotation}deg)`;
+    discElement.style.transform = `rotate(${discRotation}rad)`;
 
     if (source) {
       source.playbackRate.setValueAtTime(discVelocity / discMaxSpeed, audioCtx.currentTime);
@@ -163,6 +180,17 @@
     }
   }
 
+  function onMouseDown(e: MouseEvent) {
+    isDiskSpinning = false;
+    isDiskDragging = true;
+    dragStartRotation = discRotation;
+  }
+
+  function onMouseUp(e: MouseEvent) {
+    isDiskSpinning = true;
+    isDiskDragging = false;
+  }
+
   onMount(() => {
     requestAnimationFrame(tick);
 
@@ -207,15 +235,19 @@
 
 <main class="flex justify-center items-center h-screen">
   <div class="flex justify-center items-center w-full h-[30rem] gap-16">
-    <div
-      class="rounded-full uppercase text-lg bg-cover bg-center border-6 border-accent bg-stone-800 aspect-square h-full flex justify-center items-center"
+    <button
+      class="rounded-full uppercase text-lg bg-cover bg-center border-6 border-accent bg-stone-800 aspect-square h-full flex justify-center items-center hover:cursor-grab active:cursor-grabbing"
       bind:this={discElement}
       style:background-image={`url('${queue[currIndex] && !isLoading ? queue[currIndex].cover : ""}')`}
+      aria-label="disc"
+      on:mousedown|preventDefault={onMouseDown}
+      on:mouseup|preventDefault={onMouseUp}
+      on:mousemove={e => mousePos = [e.clientX, e.clientY]}
     >
       <span class="bg-stone-800 aspect-square w-34 rounded-full flex justify-center items-center">
         <span class="border-6 border-stone-600 bg-stone-900 rounded-full w-20 aspect-square"></span>
       </span>
-    </div>
+    </button>
 
     {#if queue.length > 0 && !isLoading}
       <hr class="border3 border-stone-700 rounded-full h-full">
