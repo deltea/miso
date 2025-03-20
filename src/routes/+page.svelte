@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { parseWebStream } from "music-metadata";
   import { extractColors } from "extract-colors";
-  import anime from "animejs";
+  import { browser } from "$app/environment";
 
   interface Song {
     title: string;
@@ -13,14 +13,18 @@
 
   const validFileTypes = ["audio/mpeg", "audio/ogg", "audio/wav"];
   let isPaused = true;
+  let isLoading = false;
   let queue: Song[] = [];
+  let audioBuffers: AudioBuffer[] = [];
   let currIndex = 0;
+  let delta = 0;
+  let lastTime = 0;
 
   let discElement: HTMLDivElement;
   let queueElement: HTMLDivElement;
 
-  const discAcceleration = 0.08;
-  const discMaxSpeed = 2;
+  const discAcceleration = 0.75;
+  const discMaxSpeed = 60;
   let discVelocity = 0;
   let discRotation = 0;
 
@@ -32,6 +36,9 @@
   function tick() {
     if (!discElement) return;
 
+    delta = (performance.now() - lastTime) / 1000;
+    lastTime = performance.now();
+
     if (isPaused) {
       discVelocity -= discAcceleration;
       discVelocity = Math.max(discVelocity, 0);
@@ -40,7 +47,7 @@
       discVelocity = Math.min(discVelocity, discMaxSpeed);
     }
 
-    discRotation += discVelocity;
+    discRotation += discVelocity * delta;
     discElement.style.transform = `rotate(${discRotation}deg)`;
 
     if (source) {
@@ -72,6 +79,8 @@
     );
 
     if (files.length > 0) {
+      isLoading = true;
+
       let prevQueue = queue;
 
       queue = [...queue, ...(await Promise.all(files.map(async file => {
@@ -89,20 +98,25 @@
         } as Song;
       }))) as Song[]];
 
+      // preload all audio buffers
+      audioBuffers = await Promise.all(queue.map(async song => {
+        const response = await fetch(song.src);
+        const arrayBuffer = await response.arrayBuffer();
+        return await audioCtx.decodeAudioData(arrayBuffer);
+      }));
+
       if (prevQueue.length == 0) {
         setSong(0);
       }
+
+      isLoading = false;
     }
   }
 
   async function playAudio(url: string) {
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-    if (source) source.stop();
+    stopAudio();
     source = audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
+    source.buffer = audioBuffers[currIndex];
     source.loop = false;
 
     gainNode = audioCtx.createGain();
@@ -111,9 +125,14 @@
     source.connect(filter);
     filter.connect(gainNode);
     gainNode.connect(audioCtx.destination);
+    gainNode.gain.value = 0.5;
 
     filter.frequency.setValueAtTime(22050, audioCtx.currentTime);
     source.start();
+  }
+
+  function stopAudio() {
+    if (source) source.stop();
   }
 
   async function setSong(index: number) {
@@ -128,6 +147,7 @@
     const h = c.hue * 360;
     const s = c.saturation * 100;
     const l = c.lightness * 100;
+
     document.documentElement.style.setProperty("--color-accent", `hsl(${h},${s}%,${l}%)`);
 
     if ("mediaSession" in navigator) {
@@ -144,7 +164,9 @@
   }
 
   onMount(() => {
-    document.addEventListener("keypress", (event) => {
+    requestAnimationFrame(tick);
+
+    document.addEventListener("keydown", (event) => {
       if (event.key === " ") {
         isPaused = !isPaused;
       } else if (event.key === "ArrowRight") {
@@ -170,13 +192,16 @@
     audioCtx = new AudioContext();
 
     setSong(0);
-
-    requestAnimationFrame(tick);
   });
 
   onDestroy(() => {
-    if (source) source.stop();
+    stopAudio();
+
     if (audioCtx) audioCtx.close();
+
+    if (browser) {
+      document.documentElement.style.setProperty("--color-accent", "#fff");
+    }
   });
 </script>
 
@@ -185,14 +210,14 @@
     <div
       class="rounded-full uppercase text-lg bg-cover bg-center border-6 border-accent bg-stone-800 aspect-square h-full flex justify-center items-center"
       bind:this={discElement}
-      style:background-image={`url('${queue[currIndex] ? queue[currIndex].cover : ""}')`}
+      style:background-image={`url('${queue[currIndex] && !isLoading ? queue[currIndex].cover : ""}')`}
     >
       <span class="bg-stone-800 aspect-square w-34 rounded-full flex justify-center items-center">
         <span class="border-6 border-stone-600 bg-stone-900 rounded-full w-20 aspect-square"></span>
       </span>
     </div>
 
-    {#if queue.length > 0}
+    {#if queue.length > 0 && !isLoading}
       <hr class="border3 border-stone-700 rounded-full h-full">
 
       <div
@@ -219,10 +244,3 @@
     {/if}
   </div>
 </main>
-
-<!-- <audio
-  bind:paused={isPaused}
-  class="hidden"
-  bind:this={audioElement}
-  volume={0.5}
-></audio> -->
