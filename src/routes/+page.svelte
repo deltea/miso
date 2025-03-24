@@ -4,6 +4,7 @@
   import { extractColors } from "extract-colors";
   import { browser } from "$app/environment";
   import { lerpAngle } from "$lib/utils";
+  import { audioCtx, cleanupPlayer, initPlayer, play, setPlaybackRate } from "$lib/player";
 
   interface Song {
     title: string;
@@ -30,14 +31,48 @@
   let discRotation = 0;
   let dragStartRotation = 0;
 
-  let audioCtx: AudioContext;
-  let source: AudioBufferSourceNode;
-  let gainNode: GainNode;
-  let filter: BiquadFilterNode;
-
   let isDiskSpinning = true;
   let isDiskDragging = false;
   let mousePos = [0, 0];
+
+  onMount(() => {
+    initPlayer();
+
+    requestAnimationFrame(tick);
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === " ") {
+        isPaused = !isPaused;
+      } else if (event.key === "ArrowRight") {
+        setSong(currIndex + 1);
+      } else if (event.key === "ArrowLeft") {
+        setSong(currIndex - 1);
+      }
+    });
+
+    window.addEventListener("dragover", e => e.preventDefault());
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      onDrop(e);
+    });
+
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.setActionHandler("play", () => isPaused = false );
+      navigator.mediaSession.setActionHandler("pause", () => isPaused = true );
+      navigator.mediaSession.setActionHandler("previoustrack", () => setSong(currIndex - 1));
+      navigator.mediaSession.setActionHandler("nexttrack", () => setSong(currIndex + 1));
+    }
+
+    setSong(0);
+  });
+
+  onDestroy(() => {
+    cleanupPlayer();
+
+    if (browser) {
+      document.documentElement.style.setProperty("--color-accent", "#fff");
+    }
+  });
 
   function tick() {
     if (!discElement) return;
@@ -67,9 +102,7 @@
     discRotation += discVelocity * delta;
     discElement.style.transform = `rotate(${discRotation}rad)`;
 
-    if (source) {
-      source.playbackRate.setValueAtTime(discVelocity / discMaxSpeed, audioCtx.currentTime);
-    }
+    setPlaybackRate(discVelocity / discMaxSpeed);
 
     requestAnimationFrame(tick);
   }
@@ -130,33 +163,11 @@
     }
   }
 
-  async function playAudio(url: string) {
-    stopAudio();
-    source = audioCtx.createBufferSource();
-    source.buffer = audioBuffers[currIndex];
-    source.loop = false;
-
-    gainNode = audioCtx.createGain();
-    filter = audioCtx.createBiquadFilter();
-
-    source.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    gainNode.gain.value = 0.5;
-
-    filter.frequency.setValueAtTime(22050, audioCtx.currentTime);
-    source.start();
-  }
-
-  function stopAudio() {
-    if (source) source.stop();
-  }
-
   async function setSong(index: number) {
     if (queue.length == 0) return;
 
-    currIndex = index % queue.length;
-    playAudio(queue[currIndex].src);
+    currIndex = Math.max(0, index % queue.length);
+    play(audioBuffers[currIndex]);
     isPaused = false;
 
     const color = await extractColors(queue[currIndex].cover);
@@ -190,47 +201,6 @@
     isDiskSpinning = true;
     isDiskDragging = false;
   }
-
-  onMount(() => {
-    requestAnimationFrame(tick);
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === " ") {
-        isPaused = !isPaused;
-      } else if (event.key === "ArrowRight") {
-        setSong(currIndex + 1);
-      } else if (event.key === "ArrowLeft") {
-        setSong(currIndex - 1);
-      }
-    });
-
-    window.addEventListener("dragover", e => e.preventDefault());
-    window.addEventListener("drop", (e) => {
-      e.preventDefault();
-      onDrop(e);
-    });
-
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.setActionHandler("play", () => isPaused = false );
-      navigator.mediaSession.setActionHandler("pause", () => isPaused = true );
-      navigator.mediaSession.setActionHandler("previoustrack", () => setSong(currIndex - 1));
-      navigator.mediaSession.setActionHandler("nexttrack", () => setSong(currIndex + 1));
-    }
-
-    audioCtx = new AudioContext();
-
-    setSong(0);
-  });
-
-  onDestroy(() => {
-    stopAudio();
-
-    if (audioCtx) audioCtx.close();
-
-    if (browser) {
-      document.documentElement.style.setProperty("--color-accent", "#fff");
-    }
-  });
 </script>
 
 <div class="grow flex items-center">
