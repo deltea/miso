@@ -236,7 +236,7 @@
 <div class="grow flex items-center">
   <div class="flex justify-center items-center w-full h-[30rem] gap-16">
     <button
-      class="rounded-full uppercase text-lg bg-cover bg-center border-6 border-accent bg-stone-800 aspect-square h-full flex justify-center items-center hover:cursor-grab active:cursor-grabbing"
+      class="rounded-full uppercase text-lg bg-cover bg-center border-6 border-accent bg-stone-800 aspect-square h-full flex justify-center items-center hover:cursor-grab active:cursor-grabbing relative"
       bind:this={discElement}
       style:background-image={`url('${queue[currIndex] && !isLoading ? queue[currIndex].cover : ""}')`}
       aria-label="disc"
@@ -247,6 +247,17 @@
       <span class="bg-stone-800 aspect-square w-34 rounded-full flex justify-center items-center">
         <span class="border-6 border-stone-600 bg-stone-900 rounded-full w-20 aspect-square"></span>
       </span>
+
+      {#if isLoading}
+        <svg viewBox="0 0 480 480" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 scale-[190%]">
+          <path id="curve" d="M73.2,148.6c4-6.1,65.5-96.8,178.6-95.6c111.3,1.2,170.8,90.3,175.1,97" fill="transparent" />
+          <text width="500">
+            <textPath xlink:href="#curve" fill="white" font-size="60" class="lowercase">
+              loading songs...
+            </textPath>
+          </text>
+        </svg>
+      {/if}
     </button>
 
     {#if queue.length > 0 && !isLoading}
