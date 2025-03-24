@@ -3,7 +3,7 @@
   import { parseWebStream } from "music-metadata";
   import { extractColors } from "extract-colors";
   import { browser } from "$app/environment";
-    import { lerp, lerpAngle, radToDeg } from "$lib/utils";
+  import { lerpAngle } from "$lib/utils";
 
   interface Song {
     title: string;
