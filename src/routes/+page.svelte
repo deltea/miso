@@ -233,7 +233,7 @@
   });
 </script>
 
-<main class="flex justify-center items-center h-screen">
+<div class="grow flex items-center">
   <div class="flex justify-center items-center w-full h-[30rem] gap-16">
     <button
       class="rounded-full uppercase text-lg bg-cover bg-center border-6 border-accent bg-stone-800 aspect-square h-full flex justify-center items-center hover:cursor-grab active:cursor-grabbing"
@@ -275,4 +275,4 @@
       </div>
     {/if}
   </div>
-</main>
+</div>
